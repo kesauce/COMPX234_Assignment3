@@ -1,8 +1,5 @@
 import java.io.*;
 import java.net.*;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.Random;
 
@@ -49,8 +46,6 @@ public class Server {
                 if (file.exists()){
                     // Grab file size 
                     long size = file.length();
-                    // byte[] fileBytes = Files.readAllBytes(Paths.get(filepath));
-                    // int size = Base64.getEncoder().encodeToString(fileBytes).length();
 
                     // Pick a random data port that is not in used
                     Random rand = new Random();
@@ -73,12 +68,8 @@ public class Server {
                                 // Create and connect the UDP socket
                                 DatagramSocket clientSocket = new DatagramSocket(dataPort);
 
-                                // Grab the bytes of the file
-                                byte[] fileBytes = new byte[(int)file.length()];
-                                try(FileInputStream fis = new FileInputStream(file);){
-                                    fis.read(fileBytes);
-                                    fis.close();
-                                }
+                                // Create random access file in read mode
+                                RandomAccessFile raf = new RandomAccessFile(filepath, "r");
                                 
                                 // Continuous communication
                                 while (true){
@@ -103,17 +94,23 @@ public class Server {
                                         int endByte = Integer.parseInt(receivedDataArray[6]);
 
                                         // Grab the file bytes of that range and convert it to string
-                                        byte[] rangeBytes = Arrays.copyOfRange(fileBytes, startByte, endByte);
+                                        raf.seek(startByte);
+                                        int chunkSize = endByte - startByte + 1;
+                                        byte[] rangeBytes = new byte[chunkSize];
+                                        raf.read(rangeBytes);
                                         String rangeBytesData = Base64.getEncoder().encodeToString(rangeBytes);
 
+                                        System.out.println("Writing bytes from " + startByte + " to " + endByte);
+                                        System.out.println("Decoded byte length: " + rangeBytes.length);
+
                                         // Send the data to the client
-                                        String byteData = "FILE " + filename + " START " + startByte + " END " + endByte + " DATA " + rangeBytesData;
+                                        String byteData = "FILE " + filename + " OK START " + startByte + " END " + endByte + " DATA " + rangeBytesData;
                                         
                                         byte[] sendData = byteData.getBytes();
-                                        InetAddress clientAddress = requestPacket.getAddress();
-                                        int clientPort = requestPacket.getPort();
+                                        InetAddress clientAddress = clientPacket.getAddress();
+                                        int clientPort = clientPacket.getPort();
                                         DatagramPacket responsePacket = new DatagramPacket(sendData, sendData.length, clientAddress, clientPort);
-                                        serverSocket.send(responsePacket);
+                                        clientSocket.send(responsePacket);
                                     }
                                     else if (receivedDataArray[2].equals("CLOSE")){
                                         // Close the file
@@ -129,6 +126,8 @@ public class Server {
                                     }
                                     
                                 }
+                                // Close the random access file
+                                raf.close();
 
                                 // Close the socket
                                 clientSocket.close();

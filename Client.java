@@ -1,10 +1,11 @@
-import java.io.FileOutputStream;
+import java.io.RandomAccessFile;
 import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.Base64;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class Client {
     public static void main(String[] args) {
@@ -29,8 +30,19 @@ public class Client {
             for (String file : fileList) {
                 // Send the file name to the server and receive response
                 String encodedString = "DOWNLOAD " + file;
-                DatagramPacket packet = sendAndReceive(clientSocket, hostname, port, encodedString);
-                String response = new String(packet.getData(), 0, packet.getLength());
+
+                // Send data
+                byte[] sendData = encodedString.getBytes();
+                InetAddress serverAddress = InetAddress.getByName(hostname);
+                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, serverAddress, port);
+                clientSocket.send(sendPacket);
+
+                // Receive data
+                byte[] receivedData = new byte[1024];
+                DatagramPacket receivedPacket = new DatagramPacket(receivedData, receivedData.length);
+                clientSocket.receive(receivedPacket);
+                String response = new String(receivedPacket.getData(), 0, receivedPacket.getLength());
+                System.out.println("Server response: " + response);
 
                 // Split the response
                 String[] responseArray = response.split(" ");
@@ -41,77 +53,80 @@ public class Client {
                     int fileSize = Integer.parseInt(responseArray[3]);
                     int portNumber = Integer.parseInt(responseArray[5]);
 
-                    // Store the received bytes 
-                    ArrayList<Byte> fileBytes = new ArrayList<Byte>();
+                    // Create a new random access file to write the file
+                    RandomAccessFile raf = new RandomAccessFile("Client_Files/" + file, "rw");
+
+                    // List to keep track of the received bytes
+                    ArrayList<int[]> receivedBytes = new ArrayList<int[]>();
+
+                    // Keep track of how many requests have been sent
+                    int requestsSent = 0;
 
                     // Send to the server the request on the new port
-                    // for (int i = 0; i < fileSize; i += 1000) {
-                    //     // Declare an end byte that doesn't exceed the file size
-                    //     int endByte = Math.min(i + 1000, fileSize);
-
-                    //     // Send and receive request
-                    //     String dataRequest = "FILE " + file + " GET START " + i + " END " + endByte;
-                    //     DatagramPacket receivedPacket = sendAndReceive(clientSocket, hostname, portNumber, dataRequest);
-                    //     String dataResponse = new String(receivedPacket.getData(), 0, receivedPacket.getLength());
-
-                    //     // Split the get the data from the response
-                    //     String[] dataResponseArray = dataResponse.split(" ");
-
-                    //     // Decode the data to bytes
-                    //     String base64Data = dataResponseArray[7].trim();
-                    //     byte[] rangeByte = Base64.getDecoder().decode(base64Data);
-
-                    //     // Accumulate all the files
-                    //     for (Byte b : rangeByte) {
-                    //         fileBytes.add(b);
-                    //     }
-                    // }
-
-                    while (true){
-                        // Counter
-                        int counter = 0;
+                    for (int i = 0; i < fileSize; i += 1000) {
                         // Declare an end byte that doesn't exceed the file size
-                        int endByte = Math.min(counter + 1000, fileSize);
+                        int endByte = Math.min(i + 999, fileSize - 1);
 
-                        // Send and receive request
-                        String dataRequest = "FILE " + file + " GET START " + counter + " END " + endByte;
-                        DatagramPacket receivedPacket = sendAndReceive(clientSocket, hostname, portNumber, dataRequest);
-                        String dataResponse = new String(receivedPacket.getData(), 0, receivedPacket.getLength());
+                        // Send request
+                        String dataRequest = "FILE " + file + " GET START " + i + " END " + endByte;
+                        byte[] dataBytes = dataRequest.getBytes();
+                        DatagramPacket dataPacket = new DatagramPacket(dataBytes, dataBytes.length, serverAddress, portNumber);
+                        clientSocket.send(dataPacket);
+
+                        // Increment the requests sent
+                        requestsSent++;
+                    }
+
+                    // Wait for responses from the server
+                    while (receivedBytes.size() < requestsSent){
+                        // Receive data from the server
+                        byte[] downloadedData = new byte[2048];
+                        DatagramPacket downloadedPacket = new DatagramPacket(downloadedData, downloadedData.length);
+                        clientSocket.receive(downloadedPacket);
+                        String dataResponse = new String(downloadedPacket.getData(), 0, downloadedPacket.getLength());
+                        System.out.println("Server response: " + dataResponse);
 
                         // Split the get the data from the response
                         String[] dataResponseArray = dataResponse.split(" ");
 
+                        // Grab the start and end bytes
+                        int startByte = Integer.parseInt(dataResponseArray[4]);
+                        int endByte = Integer.parseInt(dataResponseArray[6]);
+
+                        // Check if the start and end bytes have already been written
+                        boolean isDuplicate = false;
+                        for (int[] range : receivedBytes) {
+                            if (Arrays.equals(range, new int[]{startByte, endByte})){
+                                isDuplicate = true;
+                                break;
+                            }
+                        }
+
+                        // If duplicate has been found then continue
+                        if (isDuplicate){
+                            continue;
+                        }
+
+                        // Find where the word DATA is
+                        int dataIndex = dataResponse.indexOf("DATA ");
+
                         // Decode the data to bytes
-                        String base64Data = dataResponseArray[7].trim();
+                        String base64Data = dataResponse.substring(dataIndex + 5).trim();
                         byte[] rangeByte = Base64.getDecoder().decode(base64Data);
 
-                        // Accumulate all the files
-                        for (Byte b : rangeByte) {
-                            fileBytes.add(b);
-                        }
+                        // Write to the random access file
+                        raf.seek(startByte);
+                        raf.write(rangeByte);
 
-                        // If the fileBytes have the same length as the original
-                        if (fileBytes.size() == fileSize){
-                            break;
-                        }
-                        // Increment the counter
-                        else{
-                            counter += 1000;
-                        }
-                    }
+                        System.out.println("Writing bytes from " + startByte + " to " + endByte);
+                        System.out.println("Decoded byte length: " + rangeByte.length);
 
-                    // Build the file in the client folder
-                    byte[] fileData = new byte[fileBytes.size()];
-                    for (int i = 0; i < fileBytes.size(); i++) {
-                        fileData[i] = fileBytes.get(i);
-                    }
-
-                    try (FileOutputStream fos = new FileOutputStream("Client_Files/" + file)) {
-                        fos.write(fileData);
-                        fos.close(); 
+                        // Keep track of the bytes that have been written already
+                        receivedBytes.add(new int[]{startByte, endByte});
                     }
 
                     // Close the file
+                    raf.close();
                     String dataRequest = "FILE " + file + " CLOSE";
                     sendAndReceive(clientSocket, hostname, portNumber, dataRequest);
 
