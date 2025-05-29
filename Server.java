@@ -28,9 +28,9 @@ public class Server {
 
             while (true) {
                 DatagramPacket requestPacket = new DatagramPacket(buffer, buffer.length);
-                serverSocket.receive(requestPacket);
 
                 // Receive the request
+                serverSocket.receive(requestPacket);
                 String receivedData = new String(requestPacket.getData(), 0, requestPacket.getLength());
                 System.out.println("Received data from client: " + receivedData);
 
@@ -51,15 +51,9 @@ public class Server {
                     Random rand = new Random();
                     int dataPort = 5000 + rand.nextInt(1001);
 
-                    // Encode string
-                    encodedString = "OK " + filename + " SIZE " + size + " PORT " + dataPort;
-
                     // Send the response back to the client
-                    byte[] sendData = encodedString.getBytes();
-                    InetAddress clientAddress = requestPacket.getAddress();
-                    int clientPort = requestPacket.getPort();
-                    DatagramPacket responsePacket = new DatagramPacket(sendData, sendData.length, clientAddress, clientPort);
-                    serverSocket.send(responsePacket);
+                    encodedString = "OK " + filename + " SIZE " + size + " PORT " + dataPort;
+                    sendMessage(encodedString, requestPacket.getAddress(), requestPacket.getPort(), serverSocket);
 
                     // Start a new thread for the client
                       Thread clientThread = new Thread(){
@@ -73,8 +67,9 @@ public class Server {
                                 
                                 // Continuous communication
                                 while (true){
-                                    // Receive the request
                                     DatagramPacket clientPacket = new DatagramPacket(buffer, buffer.length);
+
+                                    // Receive the request
                                     clientSocket.receive(clientPacket);
                                     String receivedData = new String(clientPacket.getData(), 0, clientPacket.getLength());
                                     System.out.println("Client request: " + receivedData);
@@ -97,31 +92,22 @@ public class Server {
                                         raf.seek(startByte);
                                         int chunkSize = endByte - startByte + 1;
                                         byte[] rangeBytes = new byte[chunkSize];
-                                        raf.read(rangeBytes);
-                                        String rangeBytesData = Base64.getEncoder().encodeToString(rangeBytes);
-
-                                        System.out.println("Writing bytes from " + startByte + " to " + endByte);
-                                        System.out.println("Decoded byte length: " + rangeBytes.length);
-
-                                        // Send the data to the client
-                                        String byteData = "FILE " + filename + " OK START " + startByte + " END " + endByte + " DATA " + rangeBytesData;
                                         
-                                        byte[] sendData = byteData.getBytes();
-                                        InetAddress clientAddress = clientPacket.getAddress();
-                                        int clientPort = clientPacket.getPort();
-                                        DatagramPacket responsePacket = new DatagramPacket(sendData, sendData.length, clientAddress, clientPort);
-                                        clientSocket.send(responsePacket);
+                                        // Keep track of how much of the files have been read
+                                        int bytesRead = raf.read(rangeBytes);
+                                        if (bytesRead > 0){
+                                            String rangeBytesData = Base64.getEncoder().encodeToString(rangeBytes);
+
+                                            // Send the data to the client
+                                            String byteData = "FILE " + filename + " OK START " + startByte + " END " + endByte + " DATA " + rangeBytesData;
+                                            sendMessage(byteData, clientPacket.getAddress(), clientPacket.getPort(), clientSocket);
+                                        }
                                     }
                                     else if (receivedDataArray[2].equals("CLOSE")){
                                         // Close the file
                                         // Send the data to the client
                                         String closeString = "FILE " + filename + " CLOSE_OK";
-                                        
-                                        byte[] sendData = closeString.getBytes();
-                                        InetAddress clientAddress = requestPacket.getAddress();
-                                        int clientPort = requestPacket.getPort();
-                                        DatagramPacket responsePacket = new DatagramPacket(sendData, sendData.length, clientAddress, clientPort);
-                                        serverSocket.send(responsePacket);
+                                        sendMessage(closeString, clientPacket.getAddress(), clientPacket.getPort(), clientSocket);
                                         break;
                                     }
                                     
@@ -148,11 +134,7 @@ public class Server {
                     encodedString = "ERR " + filename + " NOT_FOUND";
 
                     // Send the response back to the client
-                    byte[] sendData = encodedString.getBytes();
-                    InetAddress clientAddress = requestPacket.getAddress();
-                    int clientPort = requestPacket.getPort();
-                    DatagramPacket responsePacket = new DatagramPacket(sendData, sendData.length, clientAddress, clientPort);
-                    serverSocket.send(responsePacket);
+                    sendMessage(encodedString, requestPacket.getAddress(), requestPacket.getPort(), serverSocket);
                     break;
                 }
 
@@ -165,4 +147,17 @@ public class Server {
             System.out.println("Server error: " + e.getMessage());
         }
     }
+
+    private static void sendMessage(String encodedString, InetAddress address, int port, DatagramSocket socket){
+        try {
+            // Send the response back to the client
+            byte[] sendData = encodedString.getBytes();
+            DatagramPacket responsePacket = new DatagramPacket(sendData, sendData.length, address, port);
+            socket.send(responsePacket);
+        } 
+            catch (Exception e) {
+            System.out.println("Error sending message");
+        }
+    }
+
 }

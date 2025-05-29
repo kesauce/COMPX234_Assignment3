@@ -1,0 +1,55 @@
+According to Marinho, I am able to compensate my lack of detail in commit messages using this documentation text.
+
+On the server side:
+- When Server.java is run, the user adds a port number on which the server runs on
+- The server creates a datagram socket to wait for client requests using a while loop for continuous communication until termination
+
+On the client side:
+- When Client.java is run, the user adds the hostname, port number, and the filename of the file that contains a list of files to be downloaded on the server
+- The client then creates a datagram socket to send requests and receive responses from the server
+- The client loops through each filename in the file that was passed in in the beginning
+- For each file, the client sends a request to the server according to the protocol, asking to download that specific file
+
+On the server side:
+- When the server receives a download request, it checks if the file exists in its database (Server_Files) by splitting the request to grab the request action and filename
+- If the file exists then the server will send a new and random port number to send the data of the file through and the size of the file
+	- The server will start a new thread to communicate with the client, making sure that it's still available for any upcoming clients
+	- This random port is chosen using Java's random
+	- The server will then create a new datagram socket at this new port to send and receive files
+- If the file doesn't exist then the server will alert the client that the file doesn't exist
+
+-- Main Loop of Program --
+
+On the client side:
+- The client receives the server response and breaks down the response to find whether the file exists or not
+- If the file doesn't exist, the client will move to the next file in the file list
+- If the file exists, the client will request chunks of the file data using a for loop to the server
+	- The client decides the start and end byte of which the server will use 
+	- The client keeps track of the range of bytes it has already requested
+	- The client ensures that it doesn't have extra empty spaces in the datagram packet once the file reaches the end 
+	- The client then waits for the server to respond
+
+On the server side:
+- The server receives the request from the client which include the start and end bytes
+- The server uses Random Access File to access the bytes of the file from the start byte to the end byte
+- The server encodes the bytes to Base64 and converts it to string, ensuring that data doesn't corrupt 
+- The server builds the response back to the client which includes the filename, start byte, end byte, and the data encoded
+
+On the client side:
+- The client receives a response from the server containing the data encoded
+- The client uses Random Access File to create and write a file (onto Client_Files)
+- The client breaks apart the server's response and decodes the Base64 data into bytes
+- The client uses the bytes to write onto the file using Random Access File from the specified start byte and end byte
+- The client keeps track of the received range of bytes to ensure
+- The client ensures that it doesn't write bytes of previously received packets by detecting duplicates
+
+-- End of Main Loop of Program --
+
+On the client side:
+- If there's a packet that has been requested but not received, the client will request the missing packet for up to 5 times
+	- The client will set a timeout for 2 seconds
+	- If the client has still not received the packet, it will close the connection with the server
+- If the client has received all the packets, it will close the connection with the server
+
+On the server side:
+- The server receives a close request from the client and closes the socket
