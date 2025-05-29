@@ -15,6 +15,7 @@ public class Client {
 
         String hostname = args[0];
         int port;
+
         try {
             port = Integer.parseInt(args[1]);
         } catch (NumberFormatException e) {
@@ -46,7 +47,7 @@ public class Client {
                 String[] responseArray = response.split(" ");
 
                 // Check the status of the request
-                if(responseArray[0].equals("OK")){
+                if(responseArray[0].equals("OK") && responseArray.length == 6){
                     // Ensure we are at the right file
                     if (!responseArray[1].equals(file)){
                         System.out.println("Error: file name doesn't match");
@@ -88,6 +89,12 @@ public class Client {
                                 // Split the get the data from the response
                                 String[] dataResponseArray = dataResponse.split(" ");
 
+                                // If server response is invalid 
+                                if (dataResponseArray.length != 9){
+                                    System.out.println("Error: invalid server response");
+                                    continue;
+                                }
+
                                 // Grab the start bytes
                                 int startByte = Integer.parseInt(dataResponseArray[4]);
 
@@ -105,7 +112,7 @@ public class Client {
                                 break;
                                 
                             } catch (SocketTimeoutException e) {
-                                System.out.println("timeout");
+                                System.out.println("Error: timeout occured. Retrying.");
                                 retries++;
                             }
                         }
@@ -116,12 +123,21 @@ public class Client {
                     raf.close();
                     String dataRequest = "FILE " + file + " CLOSE";
                     sendMessage(clientSocket, hostname, portNumber, dataRequest);
-                    receiveMessage(clientSocket);
+                    String closeMessage = receiveMessage(clientSocket);
+                    System.out.println("Server response: " + closeMessage);
                     continue;
 
                 }
-                else if (responseArray[0].equals("ERR")){
+
+                // File not found
+                else if (responseArray[0].equals("ERR") && responseArray.length == 3){
                     System.out.println("File not found: " + file);
+                    continue;
+                }
+
+                // Invalid response
+                else{
+                    System.out.println("Error: invalid server response");
                     continue;
                 }
 

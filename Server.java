@@ -34,8 +34,14 @@ public class Server {
                 String receivedData = new String(requestPacket.getData(), 0, requestPacket.getLength());
                 System.out.println("Received data from client: " + receivedData);
 
-                // Grab the file 
+                // Checks if the download request is valid
                 String[] downloadArray = receivedData.split(" ");
+                if (downloadArray.length != 2){
+                    System.out.println("Error: invalid client request");
+                    continue;
+                }
+                
+                // Grab the file 
                 String filename = downloadArray[1];
                 String filepath = "C:\\Users\\alexi\\Documents\\University\\2nd Year\\COMPX234\\Assignment 3\\Server_Files\\" + filename; 
 
@@ -78,7 +84,7 @@ public class Server {
                                     String[] receivedDataArray = receivedData.split(" ");
 
                                     // Check what the request is
-                                    if (receivedDataArray[2].equals("GET")){
+                                    if (receivedDataArray[2].equals("GET") && receivedDataArray.length == 7){
                                         // Check if the file name is correct
                                         if (!receivedDataArray[1].equals(filename)){
                                             System.out.println("Error: invalid file name");
@@ -103,12 +109,19 @@ public class Server {
                                             sendMessage(byteData, clientPacket.getAddress(), clientPacket.getPort(), clientSocket);
                                         }
                                     }
-                                    else if (receivedDataArray[2].equals("CLOSE")){
+
+                                    // Client closes
+                                    else if (receivedDataArray[2].equals("CLOSE") && receivedDataArray.length == 3){
                                         // Close the file
                                         // Send the data to the client
                                         String closeString = "FILE " + filename + " CLOSE_OK";
                                         sendMessage(closeString, clientPacket.getAddress(), clientPacket.getPort(), clientSocket);
                                         break;
+                                    }
+
+                                    else{
+                                        System.out.println("Error: invalid client request");
+                                        continue;
                                     }
                                     
                                 }
